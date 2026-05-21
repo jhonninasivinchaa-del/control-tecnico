@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Control Técnico UM v9.4 - Nomenclatura</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&swap');
+  :root { --brand: #2563eb; }
+  body { font-family: 'Inter', sans-serif; background: #f1f5f9; padding-bottom: 120px; }
+  
+  .section { background: white; border-radius: 16px; padding: 16px; margin: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+  .field label { display: block; font-size: 0.65rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+  .field input, .field select { width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 10px; font-weight: 600; outline: none; background: #fff; }
+
+  .camera-box { display: none; margin-top: 10px; border: 2px solid var(--brand); border-radius: 14px; overflow: hidden; background: #000; position: relative; }
+  video { width: 100%; display: block; object-fit: cover; }
+  
+  /* Visor para Marca y Serie (OCR) */
+  .visor-guia {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 90%; height: 70px; border: 3px solid #10b981; border-radius: 8px;
+    box-shadow: 0 0 0 2000px rgba(0, 0, 0, 0.6); pointer-events: none; display: none;
+  }
+  .modo-recorte .visor-guia { display: block; }
+
+  .btn { width: 100%; padding: 12px; border-radius: 10px; font-weight: 700; font-size: 0.75rem; cursor: pointer; border: none; text-transform: uppercase; transition: 0.1s; }
+  .img-preview { display: none; width: 100%; border-radius: 10px; margin-top: 8px; border: 1px solid #cbd5e1; background: #eee; }
+  .ocr-loading { display: none; background: #fef3c7; color: #92400e; padding: 8px; border-radius: 8px; font-size: 0.7rem; font-weight: bold; text-align: center; margin-top: 5px; }
+</style>
+</head>
+<body>
+
+<div class="p-4 bg-slate-900 text-center sticky top-0 z-50 shadow-xl">
+  <h1 class="text-blue-400 font-black uppercase text-lg tracking-tighter">Control Técnico UM</h1>
+</div>
+
+<div class="section space-y-4">
+  <select id="estado_equipo" class="w-full p-4 bg-slate-800 text-white rounded-xl font-bold">
+    <option>EQUIPO NUEVO</option>
+    <option>EQUIPO ANTIGUO</option>
+    <option>EQUIPO ENCONTRADO</option>
+  </select>
+
+  <div class="grid grid-cols-1 gap-3">
+    <div class="field"><label>Sede</label><select id="clinica" onchange="updateResponsables()"><option value="">Seleccione...</option><option>COIMOLACHE</option><option>EL BROCAL</option><option>HUANZA</option><option>JULCANI</option><option>LA ZANJA</option><option>ORCOPAMPA</option><option>RIO SECO</option><option>SAN GABRIEL</option><option>TAMBOMAYO</option><option>TRAPICHE</option><option>UCHUCCHACUA</option><option>YUMPAG</option></select></div>
+    <div class="field"><label>Responsable</label><select id="responsables"><option>Seleccione sede...</option></select></div>
+    <div class="field"><label>Área</label><input type="text" id="area" oninput="this.value=this.value.toUpperCase()"></div>
+    <div class="field"><label>Fecha</label><input type="datetime-local" id="fecha"></div>
+  </div>
+</div>
+
+<div class="section">
+  <label class="field"><label>📷 Foto Estado Inicial</label></label>
+  <button class="btn bg-blue-600 text-white" onclick="openCam('cam-inicial', 'full')">Abrir Cámara</button>
+  <div id="box-cam-inicial" class="camera-box"><video id="vid-cam-inicial" autoplay playsinline muted></video><div class="p-3 bg-slate-900 flex gap-2"><button class="btn bg-red-600 text-white" onclick="captureSnapshot('cam-inicial')">Capturar</button><button class="btn bg-slate-700 text-white" onclick="stopCam()">Cerrar</button></div></div>
+  <img id="img-cam-inicial" class="img-preview">
+</div>
+
+<div id="dispositivos-list"></div>
+
+<div class="p-4"><button class="w-full bg-slate-900 text-white py-4 rounded-xl font-black uppercase text-sm" onclick="addDisp()">+ Añadir Dispositivo</button></div>
+
+<div class="section">
+  <label class="field"><label>📷 Foto Estado Final</label></label>
+  <button class="btn bg-emerald-600 text-white" onclick="openCam('cam-final', 'full')">Abrir Cámara</button>
+  <div id="box-cam-final" class="camera-box"><video id="vid-cam-final" autoplay playsinline muted></video><div class="p-3 bg-slate-900 flex gap-2"><button class="btn bg-red-600 text-white" onclick="captureSnapshot('cam-final')">Capturar</button><button class="btn bg-slate-700 text-white" onclick="stopCam()">Cerrar</button></div></div>
+  <img id="img-cam-final" class="img-preview">
+</div>
+
+<div class="fixed bottom-0 left-0 w-full p-4 bg-white border-t z-50"><button class="btn bg-blue-700 text-white py-4 rounded-full font-black shadow-2xl" onclick="generatePDF()">🚀 GENERAR REPORTE PDF</button></div>
+
+<canvas id="hidden-canvas" style="display:none;"></canvas>
+
+<script>
+const responsablesData = {"COIMOLACHE":["B. COSINGA","I. CARRASCO"], "EL BROCAL":["G. VARGAS","Z. AYUQUE"], "HUANZA":["C. ROMERO","I. ONOFRE"], "JULCANI":["J. INGAR","C. BALDEON"], "LA ZANJA":["J. SETO","M. PISCOYA"], "ORCOPAMPA":["M. VASQUEZ","F. CHAMBI"], "RIO SECO":["C. ZARATE","P. MERINO"], "SAN GABRIEL":["R. MENDOZA","S. CARPIO"], "TAMBOMAYO":["A. OLIVERA","K. SANCHEZ"], "TRAPICHE":["L. HEREDIA","J. CELIS"], "UCHUCCHACUA":["E. PORTILLA","R. LLENQUE"], "YUMPAG":["C. ARCOS","W. MALLMA"]};
+let count = 0, activeStream = null, html5Qr = null;
+
+function updateResponsables() {
+  const sede = document.getElementById('clinica').value, res = document.getElementById('responsables');
+  res.innerHTML = '';
+  if(responsablesData[sede]) responsablesData[sede].forEach(r => { const o = document.createElement('option'); o.textContent = r; res.appendChild(o); });
+  else res.innerHTML = '<option>Seleccione sede...</option>';
+}
+
+async function stopCam() {
+  if (activeStream) { activeStream.getTracks().forEach(t => t.stop()); activeStream = null; }
+  if (html5Qr) { try { await html5Qr.stop(); } catch(e){} html5Qr = null; }
+  document.querySelectorAll('.camera-box').forEach(el => el.style.display = 'none');
+}
+
+async function openCam(id, mode) {
+  await stopCam();
+  const box = document.getElementById(`box-${id}`), vid = document.getElementById(`vid-${id}`);
+  box.style.display = 'block';
+  mode === 'range' ? box.classList.add('modo-recorte') : box.classList.remove('modo-recorte');
+  try {
+    activeStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    vid.srcObject = activeStream;
+  } catch (err) { alert("Error cámara: " + err); }
+}
+
+function captureSnapshot(id, targetInput = null, isOCR = false) {
+  const vid = document.getElementById(`vid-${id}`), canvas = document.getElementById('hidden-canvas'), ctx = canvas.getContext('2d');
+  if(!vid || vid.videoWidth === 0) return;
+  canvas.width = vid.videoWidth; canvas.height = vid.videoHeight;
+  ctx.drawImage(vid, 0, 0);
+
+  let processedData;
+  if (document.getElementById(`box-${id}`).classList.contains('modo-recorte')) {
+    const cropCanvas = document.createElement('canvas'), cropCtx = cropCanvas.getContext('2d');
+    const cropW = canvas.width * 0.90, cropH = canvas.height * 0.20;
+    const cropX = (canvas.width - cropW) / 2, cropY = (canvas.height - cropH) / 2;
+    cropCanvas.width = cropW; cropCanvas.height = cropH;
+    cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+    processedData = cropCanvas.toDataURL('image/jpeg', 0.95);
+  } else {
+    processedData = canvas.toDataURL('image/jpeg', 0.92);
+  }
+
+  stopCam();
+  const img = document.getElementById(`img-${id}`);
+  if(img) { img.src = processedData; img.style.display = 'block'; }
+
+  if (isOCR && targetInput) {
+    const loader = document.getElementById(`loader-${id}`);
+    loader.style.display = 'block';
+    Tesseract.recognize(processedData, 'eng').then(({ data: { text } }) => {
+      document.getElementById(targetInput).value = text.replace(/[^a-zA-Z0-9- ]/g, '').trim().toUpperCase();
+      loader.style.display = 'none';
+    });
+  }
+}
+
+async function startBarCode(id, targetInput) {
+  await stopCam();
+  const box = document.getElementById(`box-${id}`); box.style.display = 'block';
+  html5Qr = new Html5Qrcode(`qr-vid-${id}`);
+  try {
+    await html5Qr.start({ facingMode: "environment" }, { fps: 20, qrbox: { width: 280, height: 100 } }, (text) => {
+      document.getElementById(targetInput).value = text.toUpperCase();
+      const videoElement = document.querySelector(`#qr-vid-${id} video`);
+      if (videoElement) {
+        const canvas = document.getElementById('hidden-canvas');
+        canvas.width = videoElement.videoWidth; canvas.height = videoElement.videoHeight;
+        canvas.getContext('2d').drawImage(videoElement, 0, 0);
+        const img = document.getElementById(`img-${id}`);
+        img.src = canvas.toDataURL('image/jpeg', 0.8);
+        img.style.display = 'block';
+      }
+      stopCam();
+    });
+  } catch(e) { stopCam(); }
+}
+
+function addDisp() {
+  count++; const n = count;
+  const html = `
+  <div class="section border-l-8 border-blue-600" id="card-${n}">
+    <div class="flex justify-between items-center mb-4 border-b pb-2">
+      <span class="font-black text-blue-800 uppercase text-xs">ITEM #${n}</span>
+      <button onclick="this.parentElement.parentElement.remove()" class="text-red-500 font-bold">✕</button>
+    </div>
+
+    <div class="space-y-4">
+      <div class="field">
+        <label>Código SAP (Lectura Directa)</label>
+        <div class="flex gap-2">
+          <input type="text" id="sap-${n}" placeholder="Escanear Barras">
+          <button class="bg-emerald-600 text-white px-3 rounded-lg" onclick="startBarCode('sap-${n}', 'sap-${n}')">📷</button>
+        </div>
+        <div id="box-sap-${n}" class="camera-box"><div id="qr-vid-sap-${n}"></div><button class="btn bg-slate-700 text-white mt-2" onclick="stopCam()">Cerrar</button></div>
+        <img id="img-sap-${n}" class="img-preview h-20 object-cover shadow-inner">
+      </div>
+
+      <div class="field"><label>Descripción</label><input type="text" id="desc-${n}" oninput="this.value=this.value.toUpperCase()"></div>
+
+      <div class="field">
+        <label>Marca y Modelo (OCR Recortado)</label>
+        <div class="flex gap-2">
+          <input type="text" id="mm-${n}" placeholder="Escanear...">
+          <button class="bg-purple-600 text-white px-3 rounded-lg" onclick="openCam('mm-${n}', 'range')">🔍</button>
+        </div>
+        <div id="box-mm-${n}" class="camera-box"><video id="vid-mm-${n}" autoplay playsinline muted></video><div class="visor-guia"></div><div id="loader-mm-${n}" class="ocr-loading">PROCESANDO...</div><div class="p-3 bg-slate-900 flex gap-2"><button class="btn bg-red-600 text-white" onclick="captureSnapshot('mm-${n}', 'mm-${n}', true)">Capturar</button></div></div>
+        <img id="img-mm-${n}" class="img-preview h-20 object-cover shadow-inner">
+      </div>
+
+      <div class="field">
+        <label>Serie (OCR Recortado)</label>
+        <div class="flex gap-2">
+          <input type="text" id="serie-${n}" placeholder="Escanear...">
+          <button class="bg-indigo-600 text-white px-3 rounded-lg" onclick="openCam('serie-${n}', 'range')">🔍</button>
+        </div>
+        <div id="box-serie-${n}" class="camera-box"><video id="vid-serie-${n}" autoplay playsinline muted></video><div class="visor-guia"></div><div id="loader-serie-${n}" class="ocr-loading">PROCESANDO...</div><div class="p-3 bg-slate-900 flex gap-2"><button class="btn bg-red-600 text-white" onclick="captureSnapshot('serie-${n}', 'serie-${n}', true)">Capturar</button></div></div>
+        <img id="img-serie-${n}" class="img-preview h-20 object-cover shadow-inner">
+      </div>
+
+      <div class="bg-slate-50 p-3 rounded-xl space-y-4">
+        ${[1, 2, 3].map(i => `
+          <div class="field">
+            <label>Obs ${i}</label>
+            <input type="text" id="obs${i}-${n}" oninput="this.value=this.value.toUpperCase()" class="mb-2">
+            <button class="btn bg-white text-slate-700 text-[0.6rem] border shadow-sm" onclick="openCam('p${i}-${n}', 'full')">📸 Foto Obs ${i}</button>
+            <img id="img-p${i}-${n}" class="img-preview">
+            <div id="box-p${i}-${n}" class="camera-box"><video id="vid-p${i}-${n}" autoplay playsinline muted></video><div class="p-3 bg-slate-900 flex gap-2"><button class="btn bg-red-600 text-white" onclick="captureSnapshot('p${i}-${n}')">Capturar</button></div></div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('dispositivos-list').insertAdjacentHTML('beforeend', html);
+}
+
+function generatePDF() {
+  const { jsPDF } = window.jspdf, doc = new jsPDF('p', 'mm', 'a4');
+  let y = 15; const pageWidth = doc.internal.pageSize.getWidth(), margin = 15, maxW = pageWidth - (margin * 2);
+
+  const addImg = (imgEl) => {
+    if(!imgEl || !imgEl.src || imgEl.style.display === 'none' || imgEl.src.length < 100) return;
+    const props = doc.getImageProperties(imgEl.src);
+    const h = (props.height * maxW) / props.width;
+    
+    if(y + h > 280) { doc.addPage(); y = 20; }
+    doc.addImage(imgEl.src, 'JPEG', margin, y, maxW, h);
+    y += h + 8;
+  };
+
+  const addTextLine = (label, value) => {
+    if(y > 275) { doc.addPage(); y = 20; }
+    doc.setFont(undefined, 'bold');
+    doc.text(`${label}: `, margin, y);
+    const labelW = doc.getTextWidth(`${label}: `);
+    doc.setFont(undefined, 'normal');
+    
+    const cleanValue = value ? String(value) : '—';
+    const splitText = doc.splitTextToSize(cleanValue, maxW - labelW);
+    
+    splitText.forEach((line, index) => {
+      if (index > 0) {
+        y += 6;
+        if(y > 275) { doc.addPage(); y = 20; }
+        doc.text(line, margin + labelW, y);
+      } else {
+        doc.text(line, margin + labelW, y);
+      }
+    });
+    y += 7;
+  };
+
+  // ---- CABECERA GENERAL ----
+  doc.setFontSize(16); doc.setFont(undefined, 'bold'); 
+  doc.text("INFORME TÉCNICO DE EQUIPOS", pageWidth/2, y, {align:'center'}); y += 15;
+  
+  doc.setFontSize(11); doc.setFont(undefined, 'normal');
+  addTextLine("ESTADO GENERAL", document.getElementById('estado_equipo').value);
+  addTextLine("SEDE", document.getElementById('clinica').value);
+  addTextLine("RESPONSABLE", document.getElementById('responsables').value);
+  addTextLine("ÁREA", document.getElementById('area').value);
+  addTextLine("FECHA", document.getElementById('fecha').value);
+  y += 5;
+
+  // Foto Inicial
+  const imgInicial = document.getElementById('img-cam-inicial');
+  if(imgInicial && imgInicial.src && imgInicial.style.display !== 'none') {
+    if(y > 250) { doc.addPage(); y = 20; }
+    doc.setFont(undefined, 'bold'); doc.text("FOTO ESTADO INICIAL:", margin, y); y += 6;
+    addImg(imgInicial);
+    y += 5;
+  }
+
+  // ---- ELEMENTOS / DISPOSITIVOS DINÁMICOS ----
+  document.querySelectorAll('.section[id^="card-"]').forEach((card, idx) => {
+    const id = card.id.split('-')[1];
+    
+    if (y > 240) { doc.addPage(); y = 20; }
+    
+    y += 5;
+    doc.setFontSize(13); doc.setFont(undefined, 'bold'); 
+    doc.text(`DISPOSITIVO #${idx+1}`, margin, y); 
+    y += 8;
+    
+    doc.setFontSize(11);
+    const sapVal = document.getElementById('sap-'+id).value;
+    const descVal = document.getElementById('desc-'+id).value;
+    const mmVal = document.getElementById('mm-'+id).value;
+    const serieVal = document.getElementById('serie-'+id).value;
+
+    addTextLine("CÓDIGO SAP", sapVal);
+    const imgSap = document.getElementById(`img-sap-${id}`);
+    if(imgSap && imgSap.src && imgSap.style.display !== 'none') { addImg(imgSap); }
+
+    addTextLine("DESCRIPCIÓN", descVal);
+
+    addTextLine("MARCA Y MODELO", mmVal);
+    const imgMm = document.getElementById(`img-mm-${id}`);
+    if(imgMm && imgMm.src && imgMm.style.display !== 'none') { addImg(imgMm); }
+
+    addTextLine("N° SERIE", serieVal);
+    const imgSerie = document.getElementById(`img-serie-${id}`);
+    if(imgSerie && imgSerie.src && imgSerie.style.display !== 'none') { addImg(imgSerie); }
+
+    for(let o=1; o<=3; o++) {
+      const valObs = document.getElementById(`obs${o}-${id}`).value;
+      const imgObs = document.getElementById(`img-p${o}-${id}`);
+      
+      if(valObs || (imgObs && imgObs.src && imgObs.style.display !== 'none')) {
+        addTextLine(`OBSERVACIÓN ${o}`, valObs);
+        if(imgObs && imgObs.src && imgObs.style.display !== 'none') { addImg(imgObs); }
+      }
+    }
+    y += 5;
+  });
+
+  // Foto Final
+  const imgFinal = document.getElementById('img-cam-final');
+  if(imgFinal && imgFinal.src && imgFinal.style.display !== 'none') {
+    if(y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(11); doc.setFont(undefined, 'bold'); 
+    doc.text("FOTO ESTADO FINAL:", margin, y); y += 6;
+    addImg(imgFinal);
+  }
+
+  // ---- PROCESAMIENTO DE LA NOMENCLATURA SOLICITADA ----
+  const areaInput = document.getElementById('area').value.trim() || "SIN-AREA";
+  const areaClean = areaInput.replace(/[^a-zA-Z0-9-]/g, '_'); // Sanitizar nombre del área
+
+  const now = new Date();
+  const MM = String(now.getMonth() + 1).padStart(2, '0');
+  const DD = String(now.getDate()).padStart(2, '0');
+  const HH = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+
+  // Nomenclatura final: AREA_MM-DD-HH-mm.pdf (Reemplazando los ":" no válidos en archivos por "-")
+  const fileName = `${areaClean}_${MM}-${DD}-${HH}-${mm}.pdf`;
+
+  doc.save(fileName);
+}
+
+window.onload = () => {
+  const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  document.getElementById('fecha').value = now.toISOString().slice(0,16);
+  addDisp();
+}
+</script>
+</body>
+</html>
